@@ -177,33 +177,32 @@ The password is never stored by the frontend. Keep this option off on a shared
 device and use **Sign out** when finished. Production must set
 `SESSION_COOKIE_SECURE=true`; the browser sends the cookie only over HTTPS.
 
-## Production deployment (manual account setup required)
+## Free public demo deployment (manual account setup required)
 
-The repository now includes a Dockerfile that builds the existing Vite frontend
-and serves it from the FastAPI app at the same origin. This keeps the browser
-session first-party and makes React routes work when refreshed. A simple hosted
-prototype path is one Render Docker web service plus Render Postgres, with the
-service kept at exactly one instance so the in-process APScheduler is not run
-twice. Render provides a public `onrender.com` URL and managed HTTPS; a custom
-domain is optional. Do not use the free web service for scheduled calls: it can
-spin down, and the free Postgres database expires after 30 days. The API needs a
-continuously running paid web instance and a persistent paid database for
-reminders and patient records. Check the provider's current price before
-creating paid resources. See Render's [web service deployment guide](https://render.com/docs/web-services),
-[Postgres guide](https://render.com/docs/postgresql), and
-[free tier limits](https://render.com/docs/free).
+The root `render.yaml` is configured as a free-tier demo: one Render web service
+serves the built frontend and FastAPI backend from one public HTTPS URL, with a
+free Render Postgres database. Render's free web service sleeps after 15 minutes
+without traffic and takes about a minute to wake. The in-process scheduler
+pauses while the service sleeps, so scheduled reminders and calls can be
+missed. Free Postgres expires after 30 days and has no backups. Use synthetic
+demo data only. `ENABLE_VOICE_CALLS` stays enabled, but this setup is not
+reliable for scheduled medication calls. Twilio may charge separately for calls.
+See Render's [free tier limits](https://render.com/docs/free), [web service
+guide](https://render.com/docs/web-services), and [Postgres
+guide](https://render.com/docs/postgresql).
 
-### Prepare the existing data
+### Prepare existing data
 
-If you need to move existing patient records, first create the Render Blueprint
-below so Render provisions Postgres. Before using the deployed service with real
-patients, back up `backend/medimate.db` while the local backend is stopped. Keep
-the backup private; it may contain patient records. The database file and
-backups are ignored by Git and must never be uploaded to a public repository.
+Do not copy real patient records into the free demo database: it expires after
+30 days and does not include backups. Use synthetic data for the free URL. If
+you need to migrate records, first upgrade the Render Postgres database to a
+paid plan and make a private backup of `backend/medimate.db` while the local
+backend is stopped. The database file and backups are ignored by Git and must
+never be uploaded to a public repository.
 
-Use the Postgres **external** connection URL temporarily from your trusted
-migration machine; the app receives the internal connection URL from the
-Blueprint. The app accepts `postgres://`, `postgresql://`, or
+For a paid database, use its **external** connection URL temporarily from your
+trusted migration machine; the app receives the internal connection URL from
+the Blueprint. The app accepts `postgres://`, `postgresql://`, or
 `postgresql+psycopg://` URLs. Set `DATABASE_URL` in the trusted terminal to the
 external destination URL, then run from the project root:
 
@@ -220,40 +219,28 @@ and application records. This is a one-time data copy; back up the PostgreSQL
 database before each future schema change. The project does not yet include a
 versioned migration framework for later schema evolution.
 
-### Create the public service
+### Create the free public service
 
-The root `render.yaml` is a Render Blueprint for this full-stack deployment.
-The Docker image builds the frontend and serves it from FastAPI, so the browser
-uses one public URL for both the website and `/api` endpoints.
+The root `render.yaml` defines the free web and Postgres plans. The Docker image
+builds the frontend and serves it from FastAPI, so the website and `/api`
+endpoints share one public URL.
 
 1. In the Render dashboard, choose **New > Blueprint**, connect the GitHub
-   repository containing this project, and select the branch with `render.yaml`.
-   Render will show the services and current charges before creating them. The
-   Blueprint defines one always-on web instance and one persistent Postgres
-   database in Singapore. Review the current plan prices before accepting.
+   repository containing this project, and select the `main` branch. Review the
+   resources and confirm both plans are **Free** before deploying.
 2. When prompted, enter the Twilio Account SID, Auth Token, and authorized
    Twilio phone number in Render's private environment-variable form. Do not
-   put these values in GitHub or paste them into chat. The Blueprint leaves
-   `ENABLE_VOICE_CALLS=true`; calls work after valid Twilio credentials and an
-   eligible, opted-in recipient are configured. The status callback URL is
-   derived from Render's HTTPS service URL automatically. For a custom domain,
-   set `TWILIO_STATUS_CALLBACK_URL` to
+   put these values in GitHub or paste them into chat. Calls remain enabled and
+   the status callback URL is derived from Render's HTTPS URL, but the sleeping
+   free web service can miss scheduled calls. For a custom domain, set
+   `TWILIO_STATUS_CALLBACK_URL` to
    `https://<your-domain>/api/calls/webhook/status`.
-3. Click **Apply** to create the services and wait for the first deployment.
-   Render assigns the service a public `https://<service>.onrender.com` URL.
-   Open that URL in a browser and check that `<service-url>/api/health` reports
-   `ok`. The same URL serves the frontend and backend.
-4. If you have existing local patient records, follow [Prepare the existing
-   data](#prepare-the-existing-data) to copy them into Postgres before using the
-   deployed service. Keep local database backups private.
-5. Register accounts and verify the app using synthetic data first. Configure
-   an optional custom domain in Render if desired. The frontend and API remain
-   on the same host.
-
-The Blueprint enables voice calls and keeps one web instance because the call
-scheduler runs in that API process. Do not scale the service to multiple
-instances without moving scheduled work to a shared worker. Reminder and call
-records are stored in Postgres.
+3. Click **Deploy Blueprint** and wait for the first deployment. Render assigns
+   a public `https://<service>.onrender.com` URL. Open it in a browser and check
+   that `<service-url>/api/health` reports `ok`.
+4. Use synthetic accounts and data for this free demo. For dependable scheduled
+   reminders and calls, upgrade the web service and database before relying on
+   them. The free Postgres database expires after 30 days.
 
 ### Local production build and commands
 

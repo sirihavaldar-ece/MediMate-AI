@@ -3,7 +3,7 @@ services:
     name: medimate-ai
     runtime: docker
     region: singapore
-    plan: 0.5c-512mb
+    plan: free
     numInstances: 1
     healthCheckPath: /api/health
     dockerfilePath: ./Dockerfile
@@ -37,5 +37,4 @@ services:
 databases:
   - name: medimate-db
     region: singapore
-    plan: 0.5c-1g
-    diskSizeGB: 1
+    plan: free
