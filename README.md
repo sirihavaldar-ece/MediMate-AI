@@ -195,77 +195,65 @@ creating paid resources. See Render's [web service deployment guide](https://ren
 
 ### Prepare the existing data
 
-1. Back up `backend/medimate.db` while the local backend is stopped. Keep the
-   backup private; it may contain patient records. The database file is ignored
-   by Git and must never be uploaded to a public repository.
-2. Create a new Render Postgres database in the region nearest the API service.
-   Use its **external** connection URL temporarily from your trusted migration
-   machine, and its **internal** connection URL for the deployed app. The app
-   accepts `postgres://`, `postgresql://`, or `postgresql+psycopg://` URLs.
-3. Before deploying real records, copy the SQLite data into the empty Postgres
-   database from a trusted machine. Set `DATABASE_URL` in that terminal to the
-   destination URL, then run from the project root:
+If you need to move existing patient records, first create the Render Blueprint
+below so Render provisions Postgres. Before using the deployed service with real
+patients, back up `backend/medimate.db` while the local backend is stopped. Keep
+the backup private; it may contain patient records. The database file and
+backups are ignored by Git and must never be uploaded to a public repository.
 
-   ```powershell
-   $env:APP_ENV = "development"
-   $env:DATABASE_URL = "<private PostgreSQL destination URL>"
-   Set-Location backend
-   ..\.venv\Scripts\python.exe -m scripts.migrate_sqlite_to_postgres .\medimate.db
-   ```
+Use the Postgres **external** connection URL temporarily from your trusted
+migration machine; the app receives the internal connection URL from the
+Blueprint. The app accepts `postgres://`, `postgresql://`, or
+`postgresql+psycopg://` URLs. Set `DATABASE_URL` in the trusted terminal to the
+external destination URL, then run from the project root:
 
-   The script refuses a non-empty destination and prints table row counts, not
-   patient data. Keep the SQLite backup until you have verified the copied
-   counts and application records. This is a one-time data copy; back up the
-   PostgreSQL database before each future schema change. The project does not
-   yet include a versioned migration framework for later schema evolution.
+```powershell
+$env:APP_ENV = "development"
+$env:DATABASE_URL = "<private PostgreSQL destination URL>"
+Set-Location backend
+..\.venv\Scripts\python.exe -m scripts.migrate_sqlite_to_postgres .\medimate.db
+```
+
+The script refuses a non-empty destination and prints table row counts, not
+patient data. Keep the SQLite backup until you have verified the copied counts
+and application records. This is a one-time data copy; back up the PostgreSQL
+database before each future schema change. The project does not yet include a
+versioned migration framework for later schema evolution.
 
 ### Create the public service
 
-1. Create a **private** Git repository in your Git provider, add this project,
-   and push it. Confirm `.env`, `backend/medimate.db`, and backups are excluded.
-   This workspace currently has no Git remote configured.
-2. In Render, choose **New → Web Service**, connect the private repository, and
-   choose Docker as the runtime (Render detects the root `Dockerfile`). Choose a
-   paid always-on plan, a region near the database, one instance, and no
-   autoscaling. Set health check path to `/api/health`.
-3. Add these service environment variables in Render's dashboard. Keep the
-   database URL and generated secret private:
+The root `render.yaml` is a Render Blueprint for this full-stack deployment.
+The Docker image builds the frontend and serves it from FastAPI, so the browser
+uses one public URL for both the website and `/api` endpoints.
 
-   | Variable | Value |
-   | --- | --- |
-   | `APP_ENV` | `production` |
-   | `DATABASE_URL` | Render Postgres internal URL |
-   | `SECRET_KEY` | A freshly generated random value, e.g. `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
-   | `SESSION_COOKIE_SECURE` | `true` |
-   | `SESSION_COOKIE_SAMESITE` | `lax` |
-   | `PERSISTENT_SESSION_DAYS` | `30` |
-   | `CORS_ORIGINS` | The final HTTPS site origin, e.g. `https://your-service.onrender.com` |
-   | `SCHEDULER_INTERVAL_SECONDS` | `10` |
-   | `ENABLE_VOICE_CALLS` | `false` until a real authorized call is deliberately configured |
-   | `TWILIO_ACCOUNT_SID` | Twilio SID, if using calls |
-   | `TWILIO_AUTH_TOKEN` | Twilio auth token, if using calls |
-   | `TWILIO_FROM_NUMBER` | Authorized E.164 Twilio number, if using calls |
-   | `TWILIO_STATUS_CALLBACK_URL` | `https://<your-service>/api/calls/webhook/status` |
-   | `NEBIUS_API_KEY` | Optional; leave unset for local mock mode |
-   | `NEBIUS_MODEL` | Optional; defaults to the existing NVIDIA model |
+1. In the Render dashboard, choose **New > Blueprint**, connect the GitHub
+   repository containing this project, and select the branch with `render.yaml`.
+   Render will show the services and current charges before creating them. The
+   Blueprint defines one always-on web instance and one persistent Postgres
+   database in Singapore. Review the current plan prices before accepting.
+2. When prompted, enter the Twilio Account SID, Auth Token, and authorized
+   Twilio phone number in Render's private environment-variable form. Do not
+   put these values in GitHub or paste them into chat. The Blueprint leaves
+   `ENABLE_VOICE_CALLS=true`; calls work after valid Twilio credentials and an
+   eligible, opted-in recipient are configured. The status callback URL is
+   derived from Render's HTTPS service URL automatically. For a custom domain,
+   set `TWILIO_STATUS_CALLBACK_URL` to
+   `https://<your-domain>/api/calls/webhook/status`.
+3. Click **Apply** to create the services and wait for the first deployment.
+   Render assigns the service a public `https://<service>.onrender.com` URL.
+   Open that URL in a browser and check that `<service-url>/api/health` reports
+   `ok`. The same URL serves the frontend and backend.
+4. If you have existing local patient records, follow [Prepare the existing
+   data](#prepare-the-existing-data) to copy them into Postgres before using the
+   deployed service. Keep local database backups private.
+5. Register accounts and verify the app using synthetic data first. Configure
+   an optional custom domain in Render if desired. The frontend and API remain
+   on the same host.
 
-   The server creates tables on first startup. Do not deploy the SQLite database
-   file or run multiple web instances: the scheduler lives in this one API
-   process. Dose occurrences and call attempts are stored in Postgres and have
-   database uniqueness constraints. On restart, recent occurrences are
-   recovered; calls more than two minutes late are intentionally skipped.
-4. Deploy. Open the actual Render URL, confirm `/api/health` reports `ok`, and
-   check the Render logs for startup errors. Configure an optional custom domain
-   in Render and update `CORS_ORIGINS` to its final HTTPS origin if it changes.
-5. Only after the service is reachable, set Twilio's status callback to the
-   exact public HTTPS URL above. The callback verifies Twilio's signature and
-   records call status; it does not confirm a medication dose. Do not enable
-   live calls until the patient has opted in with an authorized test number.
-6. Register synthetic patient/caregiver accounts on the public site. Install
-   the PWA, sign in once, close/reopen it, confirm the saved dashboard returns,
-   then test sign out and sign back in. Test dose confirmation and Twilio with
-   mocks first. A real call is a separate manual test only to an authorized
-   number.
+The Blueprint enables voice calls and keeps one web instance because the call
+scheduler runs in that API process. Do not scale the service to multiple
+instances without moving scheduled work to a shared worker. Reminder and call
+records are stored in Postgres.
 
 ### Local production build and commands
 

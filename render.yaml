@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: medimate-ai
+    runtime: docker
+    region: singapore
+    plan: 0.5c-512mb
+    numInstances: 1
+    healthCheckPath: /api/health
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: medimate-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SESSION_COOKIE_SAMESITE
+        value: lax
+      - key: PERSISTENT_SESSION_DAYS
+        value: "30"
+      - key: SCHEDULER_INTERVAL_SECONDS
+        value: "10"
+      - key: ENABLE_VOICE_CALLS
+        value: "true"
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+
+databases:
+  - name: medimate-db
+    region: singapore
+    plan: 0.5c-1g

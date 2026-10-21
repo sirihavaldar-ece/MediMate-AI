@@ -56,6 +56,10 @@ TWILIO_TRIAL_VOICE_TEMPLATES = frozenset(
     }
 )
 TWILIO_STATUS_CALLBACK_URL = os.getenv("TWILIO_STATUS_CALLBACK_URL", "").strip()
+if not TWILIO_STATUS_CALLBACK_URL:
+    public_url = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+    if public_url.startswith("https://"):
+        TWILIO_STATUS_CALLBACK_URL = f"{public_url}/api/calls/webhook/status"
 ENABLE_VOICE_CALLS = os.getenv("ENABLE_VOICE_CALLS", "true").strip().lower() in {
     "1", "true", "yes", "on"
 }
