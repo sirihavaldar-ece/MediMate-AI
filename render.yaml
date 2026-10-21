@@ -38,3 +38,4 @@ databases:
   - name: medimate-db
     region: singapore
     plan: 0.5c-1g
+    diskSizeGB: 1
